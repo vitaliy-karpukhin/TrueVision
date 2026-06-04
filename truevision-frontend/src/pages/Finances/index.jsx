@@ -37,7 +37,7 @@ function StatHero({ label, amount, arrow, bg, loading, docsCount, docsLabel }) {
         {loading
           ? <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '2rem' }}>…</span>
           : <>
-              <span style={{ fontSize: '2rem', fontWeight: '800', color: '#fff', lineHeight: 1 }}>{fmt(amount)}</span>
+              <span className="fin-amount" style={{ color: '#fff' }}>{fmt(amount)}</span>
               <span style={{ fontSize: '1rem', fontWeight: '700', color: 'rgba(255,255,255,0.7)' }}>€</span>
             </>
         }
@@ -80,7 +80,7 @@ function NetCard({ income, expense, loading }) {
         {loading
           ? <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '2rem' }}>…</span>
           : <>
-              <span style={{ fontSize: '2rem', fontWeight: '800', color: positive ? '#00E5FF' : '#FC8181', lineHeight: 1 }}>
+              <span className="fin-amount" style={{ color: positive ? '#00E5FF' : '#FC8181' }}>
                 {positive ? '+' : '−'}{fmt(Math.abs(net))}
               </span>
               <span style={{ fontSize: '1.3rem', fontWeight: '700', color: 'rgba(255,255,255,0.5)' }}>€</span>
@@ -243,7 +243,7 @@ export default function Finances() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
           {/* Три hero-карточки */}
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          <div className="fin-hero-row">
             <StatHero
               label={t.fin_income}
               amount={incomeData.total}
@@ -264,7 +264,7 @@ export default function Finances() {
           </div>
 
           {/* Две колонки категорий */}
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          <div className="fin-cat-row">
             <CategoryList
               title={`${t.fin_income} — по категориям`}
               items={incomeData.items}

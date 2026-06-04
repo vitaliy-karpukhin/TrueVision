@@ -23,3 +23,34 @@
     font-size: 2.6rem !important;
   }
 }
+
+/* ── Overview hero cards ──────────────────────────────────────────────────── */
+.fin-hero-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+.fin-hero-row .fin-amount {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 600px) {
+  .fin-hero-row { grid-template-columns: 1fr; }
+  .fin-hero-row > div { padding: 1rem 1.2rem; }
+  .fin-hero-row .fin-amount { font-size: 1.75rem; }
+}
+
+/* ── Overview category lists ─────────────────────────────────────────────── */
+.fin-cat-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+@media (max-width: 600px) {
+  .fin-cat-row { grid-template-columns: 1fr; }
+}

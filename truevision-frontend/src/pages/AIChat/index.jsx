@@ -85,8 +85,8 @@ export default function AIChat() {
   if (!messages) return null;
 
   return (
-    <div style={s.container}>
-      <div style={s.chatWrapper}>
+    <div className="chat-outer">
+      <div className="chat-inner">
         <div style={s.chatHeader}>
           <div style={s.botAvatar}><Icons.Robot size={22} /></div>
           <div style={s.headerInfo}>

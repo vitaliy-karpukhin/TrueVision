@@ -200,3 +200,63 @@ body {
 @media (max-width: 600px) {
   .cal-cell { min-height: 52px; padding: 5px; }
 }
+
+/* ── AIChat mobile ────────────────────────────────────────────────────────── */
+.chat-outer {
+  padding: 2rem;
+  height: calc(100vh - 100px);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  box-sizing: border-box;
+}
+.chat-inner {
+  width: 80%;
+  max-width: 1000px;
+  height: 90%;
+  background: linear-gradient(160deg, #161D2F 0%, #0E1420 100%);
+  border-radius: 28px;
+  border: 1px solid rgba(0,229,255,0.08);
+  box-shadow: 0 0 80px rgba(0,229,255,0.04), 0 24px 64px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+@media (max-width: 768px) {
+  .chat-outer { padding: 0; height: calc(100vh - 68px); }
+  .chat-inner { width: 100%; height: 100%; border-radius: 0; border: none; }
+}
+
+/* ── Profile form grid ────────────────────────────────────────────────────── */
+.profile-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 600px) {
+  .profile-form-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Profile stats (3 col) — keep on mobile, just tighten ─────────────────── */
+@media (max-width: 480px) {
+  .profile-stats-3 .profile-stat-val { font-size: 0.9rem !important; }
+}
+
+/* ── Dashboard period selector ───────────────────────────────────────────── */
+.period-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 1.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.period-row .period-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+@media (max-width: 500px) {
+  .period-row .period-actions { margin-left: 0; }
+}
+
+/* ── Page padding tighten on very narrow ─────────────────────────────────── */
+@media (max-width: 420px) {
+  .app-content > div, main { padding: 0.75rem !important; }
+}

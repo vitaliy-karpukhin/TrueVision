@@ -173,7 +173,7 @@ export default function Profile() {
           <div style={s.sectionTitle}>{DE(lang) ? 'Persönliche Daten' : 'Личные данные'}</div>
         </div>
         <div style={s.sectionBody}>
-          <div style={s.grid}>
+          <div className="profile-form-grid">
             <Field label={t.name}    value={user.first_name} onChange={v => setUser(p => ({ ...p, first_name: v }))} />
             <Field label={t.surname} value={user.last_name}  onChange={v => setUser(p => ({ ...p, last_name: v }))} />
             <Field label="Email"     value={user.email}      disabled />
@@ -189,11 +189,11 @@ export default function Profile() {
           <div style={s.sectionTitle}>{t.biz}</div>
         </div>
         <div style={s.sectionBody}>
-          <div style={s.grid}>
+          <div className="profile-form-grid">
             <Field label={t.company}  value={user.company?.name}     onChange={v => setUser(p => ({ ...p, company: { ...p.company, name: v } }))} />
             <Field label={t.position} value={user.company?.position} onChange={v => setUser(p => ({ ...p, company: { ...p.company, position: v } }))} />
           </div>
-          <div style={{ ...s.grid, marginTop: '10px' }}>
+          <div className="profile-form-grid" style={{ marginTop: '10px' }}>
             <Field label={t.tax_id} value={user.company?.tax_id} onChange={v => setUser(p => ({ ...p, company: { ...p.company, tax_id: v } }))} />
             <Field label="IBAN"     value={user.company?.iban}   onChange={v => setUser(p => ({ ...p, company: { ...p.company, iban: v } }))} />
           </div>

@@ -70,13 +70,13 @@ export default function Dashboard() {
 
   return (
     <main style={s.main}>
-      <div style={periodSelectorStyle}>
+      <div className="period-row">
         {Object.entries(PERIOD_LABELS).map(([key, label]) => (
           <button key={key} style={pillStyle(period === key)} onClick={() => setPeriod(key)}>
             {label}
           </button>
         ))}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+        <div className="period-actions">
           <button
             onClick={() => navigate('/documents')}
             style={{ padding: '6px 14px', borderRadius: '10px', border: '1px solid #1E2530', background: 'transparent', color: '#9CA3AF', fontSize: '0.78rem', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
