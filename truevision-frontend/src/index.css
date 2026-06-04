@@ -233,9 +233,11 @@ body {
   .profile-form-grid { grid-template-columns: 1fr; }
 }
 
-/* ── Profile stats (3 col) — keep on mobile, just tighten ─────────────────── */
-@media (max-width: 480px) {
-  .profile-stats-3 .profile-stat-val { font-size: 0.9rem !important; }
+/* ── Profile stats — 1 col on mobile ─────────────────────────────────────── */
+@media (max-width: 600px) {
+  .profile-stats-3 {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 /* ── Dashboard period selector ───────────────────────────────────────────── */

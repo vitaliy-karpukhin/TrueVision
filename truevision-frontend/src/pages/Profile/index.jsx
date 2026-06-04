@@ -151,7 +151,7 @@ export default function Profile() {
 
       {/* ── Статистика ── */}
       {stats && (
-        <div style={s.statsGrid}>
+        <div style={s.statsGrid} className="profile-stats-3">
           {[
             { Icon: I.File,     bg: 'rgba(0,229,255,0.1)',  color: '#00E5FF', val: stats.documents,    label: DE(lang) ? 'Dokumente'     : 'Документов' },
             { Icon: I.Card,     bg: 'rgba(104,211,145,0.1)', color: '#68D391', val: stats.transactions, label: DE(lang) ? 'Transaktionen' : 'Транзакций' },
