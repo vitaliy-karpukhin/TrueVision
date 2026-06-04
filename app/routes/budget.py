@@ -6,7 +6,7 @@ import os
 import base64
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from app.db.database import get_db
 from app.models.budget import Budget
 from app.models.user import User
@@ -490,27 +490,307 @@ def _extract_budget_from_ocr_text(text: str) -> dict:
     return _classify_raw_items(income, raw_items, is_haushalts)
 
 
-def _ocr_extract_budget(file_path: str) -> dict | None:
-    """Render PDF pages to images → pytesseract OCR → regex budget parser."""
+# Keyword → (category_id, color, positional_label).
+# Searched in BOTH the column header AND the item labels — content-based detection.
+# To support new document formats, just add keywords here.
+_HEADER_KEYWORD_MAP = [
+    (["schutz", "versicherung", "insurance", "unfall", "haftpflicht",
+      "hausrat", "berufsunfähig", "rechtsschutz"],                "insurance", "#C8922A", "Versicherungen"),
+    (["wohn", "housing", "miete", "kaltmiete", "nebenkosten",
+      "finanzierung", "immobil", "rundfunk", "grundsteuer"],      "housing",   "#C0392B", "Wohnen"),
+    (["leben", "konsum", "living", "alltag", "ernährung",
+      "bekleidung", "mobilität", "freizeit", "privatkredit",
+      "streaming", "haustier", "sonstige", "vergnügen"],          "living",    "#D4820A", "Leben / Konsum"),
+    (["spar", "saving", "invest", "vorsorge", "rente", "riester",
+      "rürup", "tagesgeld", "fonds", "bav", "bausparen"],         "savings",   "#2D8A4E", "Sparen"),
+]
+
+_POSITION_FALLBACK = [
+    ("insurance", "#C8922A", "Versicherungen"),
+    ("housing",   "#C0392B", "Wohnen"),
+    ("living",    "#D4820A", "Leben / Konsum"),
+    ("savings",   "#2D8A4E", "Sparen"),
+]
+
+
+def _detect_col_meta(col_text: str, position: int) -> tuple[str, str, str]:
+    """Detect (label, cat_id, color) by scoring keyword matches in full column text.
+
+    Category is determined by content (reliable).
+    Label: use the actual header title from OCR if it's clearly a header word,
+    otherwise fall back to the default label for that category.
+    """
+    tl = col_text.lower()
+
+    # Score each category
+    scores = []
+    for keywords, cat_id, color, default_label in _HEADER_KEYWORD_MAP:
+        score = sum(1 for kw in keywords if kw in tl)
+        scores.append((score, cat_id, color, default_label))
+
+    best_score, cat_id, color, default_label = max(scores, key=lambda x: x[0])
+
+    if best_score == 0:
+        # No content keywords → positional fallback
+        if position < len(_POSITION_FALLBACK):
+            cat_id, color, default_label = _POSITION_FALLBACK[position]
+        else:
+            return f"Spalte {position + 1}", f"col{position}", "#888888"
+
+    # Use OCR title only if it looks like a genuine header (not an item name)
+    ocr_title = _extract_col_title(col_text)
+    label = ocr_title if ocr_title else default_label
+    return label, cat_id, color
+
+
+# Known item-like words that should NOT be used as column titles
+_ITEM_WORDS = {
+    "hausrat", "strom", "gas", "müll", "kita", "kinder", "leasing",
+    "beiträge", "geschenke", "handy", "streaming", "riester", "rürup",
+    "internet", "garage", "rundfunk", "girokonto", "sparbuch", "bausparen",
+    "bekleidung", "pflege", "risiko", "glas", "wohngebäude",
+}
+
+
+def _extract_col_title(col_text: str) -> str:
+    """Extract column header title from OCR text.
+    Skips item lines, UI chrome, and known item-name words.
+    Returns empty string when no reliable header is found.
+    """
+    for line in col_text.split("\n"):
+        orig = line.strip()
+        # Strip leading pipe/space/noise — all checks run on the cleaned version
+        cleaned_start = re.sub(r'^[\s|]+', '', orig)
+        if re.match(r'^[v✓vVcC©®]', cleaned_start):
+            continue
+        # Skip known UI lines (checked on cleaned_start, not orig)
+        if re.match(
+            r'^(?:Name\b|mtl\.?|Neuer\b|Vom\b|Budget|Finanz|Haus[a-z]|Arnold|Ihr\b|\d+\s*%)',
+            cleaned_start, re.I
+        ):
+            continue
+        # Strip all leading non-letter OCR noise
+        s = re.sub(r'^[^A-Za-zÄÖÜäöüß]+', '', orig)
+        if not s or len(s) < 4 or len(s) > 40:
+            continue
+        if re.search(r'\d+,\d{2}', s):
+            continue
+        # Reject if it's a known item word
+        if s.lower().rstrip(".") in _ITEM_WORDS:
+            continue
+        return s
+    return ""
+
+# Matches: checkmark + number marker (1/N/any) + label + amount on same line
+# OCR often reads (1) as (N) or (N due to font rendering
+_ITEM_OCR_RE = re.compile(
+    r'[v✓vVcC©®]?\s*[\(\[]\s*[\dNn]+\s*[\)\]]?\s*'
+    r'([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß0-9 \-/\.]{1,60}?)\s+'
+    r'([\d]{1,3}(?:[\s\.]?\d{3})*,\d{2})\s*€'
+)
+
+# Looser pattern: marker with ANY word chars (catches garbled markers like "(las" = "(1) Glas")
+# Label MUST start with uppercase to avoid false positives from OCR fragments
+_ITEM_OCR_RE_LOOSE = re.compile(
+    r'[v✓vVcC]\s+[\(\[]\s*\w{1,4}\s*[\)\]]?\s*'
+    r'([A-ZÄÖÜ][A-Za-zÄÖÜäöüß0-9 \-/\.]{2,60}?)\s+'
+    r'([\d]{1,3}(?:[\s\.]?\d{3})*,\d{2})\s*€'
+)
+
+_TOTAL_OCR_RE = re.compile(r'(\d+)\s*%\s*([\d \.]+,\d{2})\s*€\s*mtl')
+_INCOME_OCR_RE = re.compile(
+    r'(?:haushaltsnettoeinkommen|nettoeinkommen)[:\s]*([\d][\d\s\.\,]*\d),?\d*\s*€',
+    re.IGNORECASE
+)
+
+
+def _preprocess_col_text(text: str) -> str:
+    """Merge OCR line-wrap artifacts: label continuations + orphan amounts."""
+    lines = text.split('\n')
+
+    # Pass 1: merge lowercase continuations (label wrapped to next line)
+    pass1: list[str] = []
+    for line in lines:
+        s = line.strip()
+        if not s:
+            pass1.append('')
+            continue
+        if (pass1
+                and re.match(r'^[a-zäöüß]', s)
+                and not re.search(r'\d+,\d{2}\s*€', s)
+                and not re.match(r'^(?:vom|neuer)', s, re.I)):
+            pass1[-1] = pass1[-1].rstrip() + s
+        else:
+            pass1.append(s)
+
+    # Pass 2: attach orphan amounts to preceding marker lines that have no amount yet
+    pass2: list[str] = []
+    for line in pass1:
+        s = line.strip()
+        if not s:
+            pass2.append('')
+            continue
+        if (pass2
+                and re.match(r'^[\d][\d\s\.]*,\d{2}\s*€\s*$', s)
+                and re.search(r'[v✓vVcC]\s*[\(\[]', pass2[-1])
+                and not re.search(r'\d+,\d{2}\s*€', pass2[-1])):
+            pass2[-1] = pass2[-1].rstrip() + ' ' + s
+        else:
+            pass2.append(s)
+
+    return '\n'.join(pass2)
+
+
+def _run_tesseract(img_path: str) -> str:
+    """Run tesseract on an image file and return UTF-8 text."""
+    import subprocess
+    out = subprocess.run(
+        ["/opt/homebrew/bin/tesseract", img_path, "stdout", "-l", "deu", "--psm", "6"],
+        capture_output=True, timeout=30,
+    )
+    return out.stdout.decode("utf-8", errors="replace")
+
+
+def _ocr_columns(file_path: str) -> dict | None:
+    """Render PDF → split into columns → detect each dynamically → parse items."""
     try:
         import fitz
-        import pytesseract
+        import os
         from PIL import Image
         import io
 
-        pytesseract.pytesseract.tesseract_cmd = "/opt/homebrew/bin/tesseract"
-        pdf = fitz.open(file_path)
-        full_text = ""
-        for page_num in range(min(len(pdf), 3)):
-            pix = pdf[page_num].get_pixmap(matrix=fitz.Matrix(2.5, 2.5))
-            img = Image.open(io.BytesIO(pix.tobytes("png")))
-            page_text = pytesseract.image_to_string(img, lang="deu+eng", config="--psm 6")
-            full_text += page_text + "\n"
-            logger.info(f"OCR page {page_num}: {len(page_text)} chars")
+        tmp_dir = os.path.expanduser("~/Downloads")
 
-        logger.info(f"OCR total text: {len(full_text)} chars")
+        pdf = fitz.open(file_path)
+        pix = pdf[0].get_pixmap(matrix=fitz.Matrix(3, 3))
+        img = Image.open(io.BytesIO(pix.tobytes("png")))
+        w, h = img.size
+
+        # ── Income from header strip ─────────────────────────────────────────────
+        income = 0.0
+        hdr_path = os.path.join(tmp_dir, "_ocr_hdr.png")
+        img.crop((0, 0, w, int(h * 0.18))).save(hdr_path)
+        try:
+            hdr_text = _run_tesseract(hdr_path)
+        finally:
+            try:
+                os.unlink(hdr_path)
+            except OSError:
+                pass
+
+        m = _INCOME_OCR_RE.search(hdr_text)
+        if m:
+            income = _parse_amount(m.group(1))
+            logger.info(f"Income from header: {income}")
+
+        # ── Split into 4 equal columns (standard format for this document type) ──
+        n_cols = 4
+        col_w = w // n_cols
+
+        # ── Process each column strip ────────────────────────────────────────────
+        categories = []
+        pct_incomes: list[float] = []
+
+        for i in range(n_cols):
+            x0 = i * col_w
+            x1 = (i + 1) * col_w if i < n_cols - 1 else w
+            strip_path = os.path.join(tmp_dir, f"_ocr_col_{i}.png")
+            img.crop((x0, 0, x1, h)).save(strip_path)
+            try:
+                raw_text = _run_tesseract(strip_path)
+            finally:
+                try:
+                    os.unlink(strip_path)
+                except OSError:
+                    pass
+
+            col_label, cat_id, color = _detect_col_meta(raw_text, i)
+            col_text = _preprocess_col_text(raw_text)
+            logger.info(f"OCR col {i}: detected='{col_label}' → id={cat_id}, {len(col_text)} chars")
+
+            items: list[dict] = []
+            seen: set[str] = set()
+            for pattern in (_ITEM_OCR_RE, _ITEM_OCR_RE_LOOSE):
+                for m in pattern.finditer(col_text):
+                    label = m.group(1).strip().rstrip(".")
+                    amount = _parse_amount(m.group(2))
+                    key = label.lower()
+                    if amount > 0 and key not in seen and len(label) >= 2:
+                        items.append({
+                            "id": f"{cat_id}_{len(items) + 1}",
+                            "label": label,
+                            "amount": amount,
+                        })
+                        seen.add(key)
+
+            # Collect percentage-based income estimates as fallback
+            tm = _TOTAL_OCR_RE.search(col_text)
+            if tm:
+                try:
+                    pct = float(tm.group(1)) / 100
+                    total_mtl = _parse_amount(tm.group(2).replace(" ", ""))
+                    if pct > 0 and total_mtl > 0:
+                        pct_incomes.append(round(total_mtl / pct, 2))
+                except Exception:
+                    pass
+
+            if items:
+                categories.append({
+                    "id": cat_id,
+                    "label": col_label,
+                    "color": color,
+                    "items": items,
+                })
+
+        # Fallback: average of percentage-derived incomes
+        if income == 0 and pct_incomes:
+            income = round(sum(pct_incomes) / len(pct_incomes), 2)
+            logger.info(f"Income from pct fallback (avg of {pct_incomes}): {income}")
+
+        if not categories:
+            return None
+
+        logger.info(f"OCR columns: income={income}, {len(categories)} cats, "
+                    f"{sum(len(c['items']) for c in categories)} items")
+        return {"income": income, "categories": categories}
+
+    except Exception as e:
+        logger.warning(f"OCR column extraction failed: {e}")
+        return None
+
+
+def _ocr_extract_budget(file_path: str) -> dict | None:
+    """Render PDF pages to images → column-based OCR → structured budget."""
+    result = _ocr_columns(file_path)
+    if result:
+        return result
+
+    # Fallback: whole-page OCR (columns may mix)
+    try:
+        import fitz
+        import subprocess
+        import os
+
+        pdf = fitz.open(file_path)
+        pix = pdf[0].get_pixmap(matrix=fitz.Matrix(2.5, 2.5))
+        img_path = os.path.expanduser("~/Downloads/_ocr_fullpage.png")
+        with open(img_path, "wb") as f:
+            f.write(pix.tobytes("png"))
+        try:
+            out = subprocess.run(
+                ["/opt/homebrew/bin/tesseract", img_path, "stdout",
+                 "-l", "deu", "--psm", "3"],
+                capture_output=True, timeout=30
+            )
+            full_text = out.stdout.decode("utf-8", errors="replace")
+        finally:
+            try:
+                os.unlink(img_path)
+            except OSError:
+                pass
+
+        logger.info(f"OCR fallback total text: {len(full_text)} chars")
         if not full_text.strip():
-            logger.warning("OCR returned empty text")
             return None
 
         budget_data = _extract_budget_from_ocr_text(full_text)
@@ -519,18 +799,9 @@ def _ocr_extract_budget(file_path: str) -> dict | None:
             for c in budget_data.get("categories", [])
             for i in c.get("items", [])
         )
-        if not has_any and budget_data.get("income", 0) == 0:
-            logger.warning("OCR text parsed but no amounts found")
-            logger.debug(f"OCR text sample:\n{full_text[:500]}")
-            return None
-
-        logger.info(
-            f"OCR budget: income={budget_data.get('income')}, "
-            f"cats={len(budget_data.get('categories', []))}"
-        )
-        return budget_data
+        return budget_data if has_any else None
     except Exception as e:
-        logger.warning(f"OCR budget extraction failed: {e}")
+        logger.warning(f"OCR fallback failed: {e}")
         return None
 
 
@@ -640,25 +911,28 @@ def _vision_extract_budget(file_path: str) -> dict | None:
         logger.warning(f"PDF render failed: {e}")
         return None
 
-    prompt = """Du siehst ein Haushaltsbudget mit mehreren Spalten.
+    prompt = """Du siehst ein Haushaltsbudget-Dokument mit 4 farbigen Spalten.
 
-AUFGABE: Extrahiere jede Spalte als separate Kategorie exakt wie im Dokument.
+AUFGABE: Lies ALLE Zeilen mit Häkchen (✓) und Eurobetrag aus jeder Spalte — exakt so wie im Dokument.
 
-REGELN:
-1. Jede farbige Spaltenüberschrift = eine Kategorie (exakter Name aus Dokument)
-2. NUR Zeilen MIT Eurobetrag einschließen — Zeilen ohne Betrag überspringen
-3. Kopfzeilen (Name/mtl.), Summen (%, Vom Einkommen), "Neuer Ausgabentyp" überspringen
-4. Beträge als float: 400.00
-5. Abgeschnittene Namen vollständig schreiben (z.B. "Berufsunfähi..." → "Berufsunfähigkeit")
+WICHTIGE REGELN:
+1. NUR Zeilen mit einem Häkchen/Checkmark (✓ oder v) UND einem Eurobetrag (z.B. "400,00 €") aufnehmen
+2. Zeilen OHNE Eurobetrag komplett überspringen (auch wenn sie einen Zeilennamen haben)
+3. Folgende Zeilen immer überspringen: "Name", "mtl.", Prozentwerte ("5%", "15%"), "Vom Einkommen", "Neuer Ausgabentyp", Jahresbeträge
+4. Beträge exakt als float übernehmen: "400,00 €" → 400.00, "1.820,00 €" → 1820.00
+5. Namen exakt aus dem Dokument übernehmen, nichts kürzen oder erfinden
+6. Einkommenszeile (Haushaltsnettoeinkommen) falls sichtbar als "income" Wert setzen, sonst 0
 
-Kategorie-IDs nach Spaltenposition von links:
-Spalte 1 → id="insurance", color="#C8922A"
-Spalte 2 → id="housing",   color="#C0392B"
-Spalte 3 → id="living",    color="#D4820A"
-Spalte 4 → id="savings",   color="#2D8A4E"
+Spalten-Mapping (von links nach rechts, immer 4 Spalten):
+Spalte 1 (orange/gelb) → id="insurance", label=exakter Spaltenname, color="#C8922A"
+Spalte 2 (rot)         → id="housing",   label=exakter Spaltenname, color="#C0392B"
+Spalte 3 (dunkelorange)→ id="living",    label=exakter Spaltenname, color="#D4820A"
+Spalte 4 (grün)        → id="savings",   label=exakter Spaltenname, color="#2D8A4E"
 
-Gib NUR valides JSON zurück:
-{"income":0,"categories":[{"id":"insurance","label":"Schutzengel","color":"#C8922A","items":[{"id":"i1","label":"Berufsunfähigkeit","amount":20.00}]}]}"""
+Item-IDs: Spalten-ID + laufende Nummer, z.B. "insurance_1", "housing_1", "living_3"
+
+Gib NUR valides JSON zurück, kein Text drumherum:
+{"income":0,"categories":[{"id":"insurance","label":"Schutzengel","color":"#C8922A","items":[{"id":"insurance_1","label":"Berufsunfähigkeit","amount":20.00},{"id":"insurance_2","label":"Unfall","amount":20.00}]},{"id":"housing","label":"Wohnen","color":"#C0392B","items":[{"id":"housing_1","label":"Kaltmiete","amount":400.00}]}]}"""
 
     try:
         import anthropic
@@ -723,9 +997,12 @@ def import_budget_from_document(
     budget_data = None
 
     if not text.strip():
-        # Image-based PDF (no extractable text) → Claude Vision directly
-        logger.info("Image PDF → Claude Vision")
-        budget_data = _vision_extract_budget(doc.file_path)
+        # Image-based PDF → try column OCR first (fast, free), then Vision as fallback
+        logger.info("Image PDF → column OCR")
+        budget_data = _ocr_columns(doc.file_path)
+        if not budget_data:
+            logger.info("Column OCR empty → Claude Vision fallback")
+            budget_data = _vision_extract_budget(doc.file_path)
     elif is_visual_budget:
         # Text-based multi-column budget → column crop parser
         logger.info("Text budget → column crop parser")
@@ -761,3 +1038,53 @@ def import_budget_from_document(
     db.commit()
 
     return {"ok": True, "budget": budget_data, "period": p}
+
+
+# ── Transaction category → budget category mapping ────────────────────────────
+_TX_TO_BUDGET: dict[str, str] = {
+    "rent":      "housing",
+    "insurance": "insurance",
+    "materials": "living",
+    "personnel": "living",
+    "software":  "living",
+    "expense":   "living",
+    "other":     "living",
+    "tax":       "living",
+}
+_INCOME_CATS = {"revenue", "income"}
+
+
+@router.get("/actual")
+def get_budget_actual(
+    period: Optional[str] = Query(default=None),
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Return actual spending per budget category for the given period (YYYY-MM)."""
+    user = _get_user(authorization, db)
+    p = period or _current_period()
+
+    try:
+        year, month = map(int, p.split("-"))
+    except ValueError:
+        raise HTTPException(400, "period must be YYYY-MM")
+
+    start = datetime(year, month, 1)
+    end   = datetime(year + (month == 12), (month % 12) + 1, 1)
+
+    from app.models.financial_event import FinancialEvent
+
+    events = db.query(FinancialEvent).filter(
+        FinancialEvent.user_id == user["id"],
+        FinancialEvent.event_date >= start,
+        FinancialEvent.event_date < end,
+    ).all()
+
+    totals: dict[str, float] = {}
+    for e in events:
+        if (e.category or "") in _INCOME_CATS:
+            continue
+        bucket = _TX_TO_BUDGET.get(e.category or "", "living")
+        totals[bucket] = totals.get(bucket, 0.0) + (e.amount or 0)
+
+    return {cat: round(v, 2) for cat, v in totals.items()}

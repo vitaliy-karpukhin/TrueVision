@@ -72,21 +72,24 @@ function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
-function CategoryCard({ cat, index, onChange, onDelete, onAddItem, onDeleteItem, t }) {
-  const color = cat.color || COLORS[index % COLORS.length];
-  const total = cat.items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+function CategoryCard({ cat, index, onChange, onDelete, onAddItem, onDeleteItem, t, actual }) {
+  const color   = cat.color || COLORS[index % COLORS.length];
+  const planned = cat.items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const spent   = actual || 0;
+  const pct     = planned > 0 ? Math.min((spent / planned) * 100, 100) : 0;
+  const diff    = planned - spent;
+  const barColor = pct >= 100 ? '#E53E3E' : pct >= 85 ? '#FC8181' : pct >= 65 ? '#F6AD55' : '#68D391';
+  const total = planned;
 
   return (
     <div style={{
       background: '#151B28',
       borderRadius: '20px',
-      border: `1px solid #1E2530`,
+      border: '1px solid #1E2530',
       borderTop: `3px solid ${color}`,
-      overflow: 'hidden',
       display: 'flex',
       flexDirection: 'column',
-      breakInside: 'avoid',
-      marginBottom: '1rem',
+      overflow: 'hidden',
     }}>
       {/* Заголовок категории */}
       <div style={{
@@ -95,35 +98,55 @@ function CategoryCard({ cat, index, onChange, onDelete, onAddItem, onDeleteItem,
         alignItems: 'center',
         gap: '10px',
         borderBottom: '1px solid #1E2530',
+        flexShrink: 0,
       }}>
-        <div style={{
-          width: 10, height: 10, borderRadius: '50%',
-          background: color, flexShrink: 0,
-        }} />
+        <div style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
         <input
           value={cat.label}
           onChange={e => onChange({ ...cat, label: e.target.value })}
           style={{
-            flex: 1, background: 'transparent', border: 'none', outline: 'none',
+            flex: 1, minWidth: 0, background: 'transparent', border: 'none', outline: 'none',
             color: '#fff', fontSize: '0.95rem', fontWeight: '700',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}
           placeholder={t.bud_catPlaceholder}
         />
-        <span style={{ color, fontWeight: '800', fontSize: '0.95rem', whiteSpace: 'nowrap' }}>
+        <span style={{ color, fontWeight: '800', fontSize: '0.95rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
           {fmt(total)} €
         </span>
         <button
           onClick={onDelete}
-          style={{
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            color: '#374151', fontSize: '1rem', lineHeight: 1, padding: '2px 4px',
-            transition: 'color 0.15s',
-          }}
+          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#374151', fontSize: '1rem', lineHeight: 1, padding: '2px 4px', transition: 'color 0.15s' }}
           onMouseEnter={e => e.currentTarget.style.color = '#FC8181'}
           onMouseLeave={e => e.currentTarget.style.color = '#374151'}
           title="Удалить категорию"
         >×</button>
       </div>
+
+      {/* Прогресс-бар план vs факт */}
+      {spent > 0 && planned > 0 && (
+        <div style={{ padding: '0.6rem 1.2rem 0', borderBottom: '1px solid #1E2530' }}>
+          {/* Цифры */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <span style={{ fontSize: '0.72rem', color: '#6B7280' }}>
+              {t.bud_spent}: <span style={{ color: barColor, fontWeight: '700' }}>{fmt(spent)} €</span>
+            </span>
+            <span style={{ fontSize: '0.72rem', color: diff >= 0 ? '#68D391' : '#FC8181', fontWeight: '700' }}>
+              {diff >= 0 ? `${t.bud_left}: ${fmt(diff)} €` : `${t.bud_over}: ${fmt(Math.abs(diff))} €`}
+            </span>
+          </div>
+          {/* Трек */}
+          <div style={{ height: '4px', background: '#1E2530', borderRadius: '4px', overflow: 'hidden', marginBottom: '0.6rem' }}>
+            <div style={{
+              height: '100%',
+              width: `${pct}%`,
+              background: barColor,
+              borderRadius: '4px',
+              transition: 'width 0.5s ease',
+            }} />
+          </div>
+        </div>
+      )}
 
       {/* Список статей */}
       <div style={{ padding: '0.5rem 1.2rem' }}>
@@ -133,51 +156,33 @@ function CategoryCard({ cat, index, onChange, onDelete, onAddItem, onDeleteItem,
             padding: '7px 0',
             borderBottom: '1px solid rgba(255,255,255,0.03)',
           }}>
-            <div style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: `${color}66`, flexShrink: 0,
-            }} />
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: `${color}66`, flexShrink: 0 }} />
             <input
               value={item.label}
               onChange={e => onChange({
                 ...cat,
                 items: cat.items.map(i => i.id === item.id ? { ...i, label: e.target.value } : i),
               })}
-              style={{
-                flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                color: '#CBD5E0', fontSize: '0.85rem',
-              }}
+              style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#CBD5E0', fontSize: '0.85rem' }}
               placeholder={t.bud_itemPlaceholder}
             />
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
               <input
                 type="number"
                 min="0"
                 value={item.amount || ''}
                 onChange={e => onChange({
                   ...cat,
-                  items: cat.items.map(i => i.id === item.id
-                    ? { ...i, amount: parseFloat(e.target.value) || 0 }
-                    : i
-                  ),
+                  items: cat.items.map(i => i.id === item.id ? { ...i, amount: parseFloat(e.target.value) || 0 } : i),
                 })}
-                style={{
-                  width: '90px', background: '#0B0F17',
-                  border: '1px solid #1E2530', borderRadius: '8px',
-                  color: '#fff', fontSize: '0.85rem', fontWeight: '600',
-                  padding: '5px 8px', outline: 'none', textAlign: 'right',
-                }}
+                style={{ width: '90px', boxSizing: 'border-box', background: '#0B0F17', border: '1px solid #1E2530', borderRadius: '8px', color: '#fff', fontSize: '0.85rem', fontWeight: '600', padding: '5px 8px', outline: 'none', textAlign: 'right' }}
                 placeholder="0"
               />
               <span style={{ color: '#4A5568', fontSize: '0.8rem' }}>€</span>
             </div>
             <button
               onClick={() => onDeleteItem(item.id, item.label)}
-              style={{
-                background: 'transparent', border: 'none', cursor: 'pointer',
-                color: '#374151', fontSize: '0.9rem', lineHeight: 1, padding: '2px',
-                transition: 'color 0.15s',
-              }}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#374151', fontSize: '0.9rem', lineHeight: 1, padding: '2px', transition: 'color 0.15s' }}
               onMouseEnter={e => e.currentTarget.style.color = '#FC8181'}
               onMouseLeave={e => e.currentTarget.style.color = '#374151'}
             >×</button>
@@ -185,10 +190,11 @@ function CategoryCard({ cat, index, onChange, onDelete, onAddItem, onDeleteItem,
         ))}
       </div>
 
-      {/* Кнопка добавить */}
+      {/* Кнопка добавить — прижата к низу */}
       <button
         onClick={onAddItem}
         style={{
+          flexShrink: 0,
           margin: '0.5rem 1.2rem 0.9rem',
           background: 'transparent',
           border: `1px dashed ${color}44`,
@@ -225,22 +231,31 @@ export default function BudgetPlanner() {
 
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [actual, setActual] = useState({});
+  const [winW, setWinW] = useState(typeof window !== 'undefined' ? window.innerWidth : 1440);
+  useEffect(() => {
+    const h = () => setWinW(window.innerWidth);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
   const fileInputRef = useRef(null);
 
   const loadBudget = useCallback(() => {
     setBudget(null);
-    api.get(`/budget?period=${period}`)
-      .then(r => {
-        const data = r.data;
-        const clean = { income: data.income || 0, categories: data.categories || [] };
-        rawBudget.current = clean;
-        setBudget(localizeBudget(clean, t));
-      })
-      .catch(() => {
-        const fallback = { income: 0, categories: [] };
-        rawBudget.current = fallback;
-        setBudget(fallback);
-      });
+    Promise.all([
+      api.get(`/budget?period=${period}`),
+      api.get(`/budget/actual?period=${period}`).catch(() => ({ data: {} })),
+    ]).then(([budgetRes, actualRes]) => {
+      const data  = budgetRes.data;
+      const clean = { income: data.income || 0, categories: data.categories || [] };
+      rawBudget.current = clean;
+      setBudget(localizeBudget(clean, t));
+      setActual(actualRes.data || {});
+    }).catch(() => {
+      const fallback = { income: 0, categories: [] };
+      rawBudget.current = fallback;
+      setBudget(fallback);
+    });
   }, [t]);
 
   const handleUpload = async (e) => {
@@ -303,19 +318,26 @@ export default function BudgetPlanner() {
 
       {/* ── Строка "доход + сводка" ── */}
       {hasData && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#151B28', border: '1px solid #1E2530', borderRadius: '14px', padding: '10px 16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* Monatliches Einkommen */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#151B28', border: '1px solid #1E2530', borderRadius: '14px', padding: '12px 16px' }}>
             <span style={{ color: '#6B7280', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{t.bud_monthlyIncome}</span>
-            {(saving || saved) && <span style={{ fontSize: '0.72rem', color: saved ? '#68D391' : '#4A5568' }}>{saving ? t.saving : t.saved}</span>}
-            <input type="number" min="0" value={budget.income || ''} onChange={e => update({ ...budget, income: parseFloat(e.target.value) || 0 })}
-              style={{ width: '110px', background: '#0B0F17', border: '1px solid #1E2530', borderRadius: '8px', color: '#fff', fontSize: '0.9rem', fontWeight: '700', padding: '5px 10px', outline: 'none', textAlign: 'right' }} placeholder="0" />
-            <span style={{ color: '#6B7280', fontSize: '0.85rem' }}>€</span>
+            {(saving || saved) && <span style={{ fontSize: '0.72rem', color: saved ? '#68D391' : '#4A5568', flexShrink: 0 }}>{saving ? t.saving : t.saved}</span>}
+            <input
+              type="number" min="0"
+              value={budget.income || ''}
+              onChange={e => update({ ...budget, income: parseFloat(e.target.value) || 0 })}
+              style={{ flex: 1, minWidth: 0, maxWidth: '160px', marginLeft: 'auto', background: '#0B0F17', border: '1px solid #1E2530', borderRadius: '8px', color: '#fff', fontSize: '0.9rem', fontWeight: '700', padding: '5px 10px', outline: 'none', textAlign: 'right' }}
+              placeholder="0"
+            />
+            <span style={{ color: '#6B7280', fontSize: '0.85rem', flexShrink: 0 }}>€</span>
           </div>
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', flex: 1 }}>
+          {/* Ausgaben + Saldo — в одну строку под доходом */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             {[{ label: t.bud_expenses, val: totalExpenses, color: '#FC8181' }, { label: t.bud_remainder, val: surplus, color: surplusColor }].map(({ label, val, color }) => (
-              <div key={label} style={{ background: '#151B28', border: '1px solid #1E2530', borderRadius: '14px', padding: '10px 20px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <div key={label} style={{ background: '#151B28', border: '1px solid #1E2530', borderRadius: '14px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <span style={{ color: '#6B7280', fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
-                <span style={{ color, fontWeight: '800', fontSize: '1.1rem', fontVariantNumeric: 'tabular-nums' }}>{val < 0 ? '−' : ''}{fmt(Math.abs(val))} €</span>
+                <span style={{ color, fontWeight: '800', fontSize: '1.15rem', fontVariantNumeric: 'tabular-nums' }}>{val < 0 ? '−' : ''}{fmt(Math.abs(val))} €</span>
               </div>
             ))}
           </div>
@@ -381,29 +403,37 @@ export default function BudgetPlanner() {
 
       {/* Сетка категорий — только когда есть данные */}
       {hasData && (
-        <div style={{ columns: '280px', columnGap: '1rem' }}>
-          {budget.categories.map((cat, idx) => (
-            <CategoryCard
-              key={cat.id}
-              cat={cat}
-              index={idx}
-              t={t}
-              onChange={(updated) => updateCategory(idx, updated)}
-              onDelete={() => setPendingDelete({ type: 'category', idx, label: cat.label })}
-              onAddItem={() => updateCategory(idx, { ...cat, items: [...cat.items, { id: uid(), label: '', amount: 0 }] })}
-              onDeleteItem={(itemId, itemLabel) => setPendingDelete({ type: 'item', idx, itemId, label: itemLabel })}
-            />
-          ))}
+        <>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: winW >= 700 ? 'repeat(2, 1fr)' : '1fr',
+            gap: '1rem',
+            alignItems: 'stretch',
+          }}>
+            {budget.categories.map((cat, idx) => (
+              <CategoryCard
+                key={cat.id}
+                cat={cat}
+                index={idx}
+                t={t}
+                actual={actual[cat.id] || 0}
+                onChange={(updated) => updateCategory(idx, updated)}
+                onDelete={() => setPendingDelete({ type: 'category', idx, label: cat.label })}
+                onAddItem={() => updateCategory(idx, { ...cat, items: [...cat.items, { id: uid(), label: '', amount: 0 }] })}
+                onDeleteItem={(itemId, itemLabel) => setPendingDelete({ type: 'item', idx, itemId, label: itemLabel })}
+              />
+            ))}
+          </div>
           <button
             onClick={addCategory}
-            style={{ background: 'transparent', border: '1px dashed #1E2530', borderRadius: '20px', color: '#4A5568', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', minHeight: '80px', width: '100%', breakInside: 'avoid', marginBottom: '1rem', transition: 'border-color 0.2s, color 0.2s' }}
+            style={{ background: 'transparent', border: '1px dashed #1E2530', borderRadius: '14px', color: '#4A5568', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '14px', width: '100%', transition: 'border-color 0.2s, color 0.2s' }}
             onMouseEnter={e => { e.currentTarget.style.borderColor = '#00E5FF44'; e.currentTarget.style.color = '#00E5FF'; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = '#1E2530'; e.currentTarget.style.color = '#4A5568'; }}
           >
             <span style={{ fontSize: '1.2rem' }}>+</span>
             {t.bud_addCategory}
           </button>
-        </div>
+        </>
       )}
 
       {pendingDelete && (
