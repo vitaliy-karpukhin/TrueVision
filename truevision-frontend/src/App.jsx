@@ -17,6 +17,7 @@ import AIChat from './pages/AIChat';
 import Calendar from './pages/Calendar';
 import Documents from './pages/Documents';
 import Transactions from './pages/Transactions';
+import VerifyEmail from './pages/VerifyEmail';
 
 // 1. Проверка живой сессии (если удалили юзера из БД)
 const AuthWatcher = ({ children }) => {
@@ -72,6 +73,9 @@ export default function App() {
       <BrowserRouter>
         <AuthWatcher>
           <Routes>
+            {/* ВЕРИФИКАЦИЯ EMAIL */}
+            <Route path="/verify-email" element={<VerifyEmail />} />
+
             {/* ЛОГИН */}
             <Route path="/login" element={
               <PublicRoute>

@@ -74,7 +74,7 @@ def register(user_data: UserRegisterSchema, db: Session = Depends(get_db)):
         if existing_user:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
-        email_enabled = bool(os.getenv("RESEND_API_KEY", ""))
+        email_enabled = bool(os.getenv("SMTP_EMAIL", "") and os.getenv("SMTP_PASSWORD", ""))
         verification_token = secrets.token_urlsafe(32) if email_enabled else None
 
         user = User(

@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
+load_dotenv('.env.local', override=True)  # local overrides
 
 # Настройки БД
 DB_USER = os.getenv("DB_USER", "admin")
