@@ -52,6 +52,7 @@
 
 /* ── Mobile (<=768px) ── */
 @media (max-width: 768px) {
+  /* Весь wrapper — вертикальный flex, форма сверху */
   .auth-wrapper {
     flex-direction: column !important;
     overflow-y: auto !important;
@@ -59,116 +60,107 @@
     min-height: 100vh !important;
   }
 
+  /* Форма идёт первой */
+  .auth-right  { order: 1 !important; }
+  .auth-left   { order: 2 !important; }
+
   /* Мобильный хедер — логотип + язык */
   .auth-mobile-header {
     display: flex !important;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 20px;
-    background: #000;
+    padding: 14px 20px 12px;
+    background: #0B0F17;
+    border-bottom: 1px solid rgba(0,229,255,0.08);
     position: sticky;
     top: 0;
     z-index: 50;
   }
 
-  /* Скрываем логотипы внутри панелей */
-  .auth-left > div:first-child {
-    display: none !important;
-  }
+  /* Скрываем логотип внутри правой панели (дублируется в header) */
+  .lang-switcher-wrap { display: none !important; }
 
-  .auth-mobile-logo {
-    display: none !important;
-  }
-
-  /* Скрываем десктопный переключатель языка */
-  .lang-switcher-wrap {
-    display: none !important;
-  }
-
-  /* Левая панель — только контент */
-  .auth-left {
-    flex: none !important;
-    padding: 20px 20px 16px !important;
-    background: radial-gradient(circle at 80% 20%, #0D2B33 0%, #000 65%) !important;
-  }
-
-  .auth-left h1 {
-    font-size: 1.3rem !important;
-    margin-bottom: 4px !important;
-    line-height: 1.3 !important;
-  }
-
-  .auth-left p {
-    font-size: 0.75rem !important;
-    margin-bottom: 1rem !important;
-  }
-
-  .auth-features-grid {
-    grid-template-columns: 1fr 1fr !important;
-    gap: 0.5rem !important;
-    max-width: 100% !important;
-  }
-
-  .auth-feature-card {
-    padding: 0.65rem 0.8rem !important;
-    border-radius: 12px !important;
-  }
-
+  /* ── Правая панель (форма) ── */
   .auth-right {
     width: 100% !important;
     min-height: auto !important;
-    padding: 1.25rem 1rem 2rem !important;
-    justify-content: center !important;
+    padding: 1.5rem 1.25rem 1rem !important;
+    justify-content: flex-start !important;
+    background: #0B0F17 !important;
   }
 
-  /* ── Красивая обводка вокруг формы ── */
+  /* Карточка формы */
   .auth-form-card {
-    background: rgba(11, 15, 23, 0.75) !important;
-    border: 1px solid rgba(0, 229, 255, 0.18) !important;
+    border: 1px solid rgba(0,229,255,0.12) !important;
     border-radius: 20px !important;
-    padding: 1.4rem 1.25rem !important;
-    backdrop-filter: blur(20px) !important;
-    -webkit-backdrop-filter: blur(20px) !important;
-    box-shadow: 0 0 32px rgba(0, 229, 255, 0.06) !important;
+    padding: 1.5rem 1.25rem !important;
+    background: #111827 !important;
+    box-shadow: 0 0 40px rgba(0,229,255,0.05) !important;
   }
 
-  /* Компактный заголовок */
   .auth-form-card h2 {
-    font-size: 1.2rem !important;
-    margin-bottom: 0 !important;
+    font-size: 1.3rem !important;
+    margin-bottom: 2px !important;
   }
-  .auth-form-card > form > p,
   .auth-form-card p {
-    font-size: 0.78rem !important;
-    margin-bottom: 1.1rem !important;
+    font-size: 0.8rem !important;
+    margin-bottom: 1.25rem !important;
   }
-
-  /* Компактные инпуты */
   .auth-form-card input {
-    padding: 11px 14px !important;
-    font-size: 0.9rem !important;
+    padding: 12px 14px !important;
+    font-size: 0.92rem !important;
     border-radius: 10px !important;
   }
-
-  /* Уменьшаем отступы между полями */
   .auth-form-card > form > div {
-    margin-bottom: 0.85rem !important;
+    margin-bottom: 1rem !important;
   }
-
-  /* Кнопка отправки */
   .auth-form-card button[type="submit"] {
     padding: 13px !important;
     font-size: 0.95rem !important;
     border-radius: 12px !important;
-    margin-top: 4px !important;
+    margin-top: 6px !important;
   }
-
-  /* Ссылка "нет аккаунта" */
   .auth-form-card > form > div:last-child {
-    margin-top: 1rem !important;
+    margin-top: 1.1rem !important;
     margin-bottom: 0 !important;
     font-size: 0.82rem !important;
   }
+
+  /* ── Левая панель (брендинг) — компактная полоска внизу ── */
+  .auth-left {
+    flex: none !important;
+    padding: 20px 20px 24px !important;
+    background: radial-gradient(circle at 80% 20%, #0D2B33 0%, #060a10 65%) !important;
+    border-top: 1px solid rgba(0,229,255,0.07) !important;
+  }
+
+  /* Скрываем лого внутри левой панели (уже есть в мобхедере) */
+  .auth-left > div:first-child { display: none !important; }
+  .auth-mobile-logo            { display: none !important; }
+
+  .auth-left h1 {
+    font-size: 1.1rem !important;
+    margin-bottom: 4px !important;
+    line-height: 1.3 !important;
+  }
+  .auth-left p {
+    font-size: 0.72rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  /* Карточки фич — компактная 2-кол сетка */
+  .auth-features-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.4rem !important;
+    max-width: 100% !important;
+  }
+  .auth-feature-card {
+    padding: 0.55rem 0.7rem !important;
+    border-radius: 10px !important;
+  }
+  .auth-feature-card div:first-child { margin-bottom: 0.3rem !important; }
+  .auth-feature-card div:nth-child(2) { font-size: 0.8rem !important; }
+  .auth-feature-card div:nth-child(3) { font-size: 0.65rem !important; }
 }
 
 @media (min-width: 769px) {
