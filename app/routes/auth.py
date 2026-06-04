@@ -74,24 +74,32 @@ def register(user_data: UserRegisterSchema, db: Session = Depends(get_db)):
         if existing_user:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
-        verification_token = secrets.token_urlsafe(32)
+        email_enabled = bool(os.getenv("RESEND_API_KEY", ""))
+        verification_token = secrets.token_urlsafe(32) if email_enabled else None
+
         user = User(
             email=user_data.email,
             password=hash_password(user_data.password),
-            is_verified=True,
-            verification_token=None,
+            is_verified=not email_enabled,        # auto-verify when no email service
+            verification_token=verification_token,
             role="user"
         )
         db.add(user)
         db.commit()
         db.refresh(user)
 
-        try:
-            send_verification_email(user.email, verification_token)
-        except Exception as e:
-            logging.error(f"Email sending failed: {e}")
+        if email_enabled:
+            try:
+                send_verification_email(user.email, verification_token)
+            except Exception as e:
+                logging.error(f"Email sending failed: {e}")
+                # fall back: auto-verify so user is not locked out
+                user.is_verified = True
+                user.verification_token = None
+                db.commit()
 
-        return {"id": user.id, "email": user.email, "message": "Verification email sent"}
+        msg = "Verification email sent. Please check your inbox." if email_enabled else "Registration successful."
+        return {"id": user.id, "email": user.email, "message": msg}
     except HTTPException:
         raise
     except Exception as e:
